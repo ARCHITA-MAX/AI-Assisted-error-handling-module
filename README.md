@@ -30,10 +30,7 @@ Output
 Lexical Error: Unknown keyword 'intt'
 Syntax Error: Missing semicolon
 Semantic Error: Undeclared variable 'y'
-How to Run
-git clone https://github.com/your-username/compiler-project.git
-cd compiler-project
-python main.py
+
 What I Learned
 Implementation of core compiler phases
 Design of token streams, ASTs, and symbol tables
