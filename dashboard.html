@@ -1,0 +1,699 @@
+<!--
+  C Compiler Dashboard Frontend
+  This file provides a user interface to:
+  - Enter C source code
+  - Send it to Flask backend (api.py)
+  - Display results of:
+      • Lexical Analysis
+      • Syntax Analysis
+      • Semantic Analysis
+  - Show tokens, parse tree, symbol table, and corrected code
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C Compiler Dashboard</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #21262d;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --accent:   #58a6ff;
+    --green:    #3fb950;
+    --yellow:   #d29922;
+    --red:      #f85149;
+    --purple:   #bc8cff;
+    --orange:   #ffa657;
+    --cyan:     #39d353;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
+  .header-logo { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .header-sub  { color: var(--muted); font-size: 13px; }
+  .header-badge { margin-left: auto; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--muted); }
+
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 0; height: calc(100vh - 57px); }
+  .left-panel  { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+  .right-panel { display: flex; flex-direction: column; overflow: hidden; }
+
+  .api-bar { background: var(--surface2); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .api-bar label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .api-input { flex: 1; min-width: 200px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; }
+  .api-input:focus { outline: none; border-color: var(--accent); }
+  .api-status { font-size: 11px; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+  .api-status.ok  { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.3); }
+  .api-status.err { background: rgba(248,81,73,.15);  color: var(--red);   border: 1px solid rgba(248,81,73,.3); }
+
+  .editor-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
+  .editor-title { font-size: 13px; font-weight: 600; }
+  .lang-badge { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid rgba(88,166,255,.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .btn { background: var(--accent); color: #0d1117; border: none; padding: 7px 18px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .2s; white-space: nowrap; }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+  #editor { flex: 1; width: 100%; border: none; outline: none; background: #010409; color: #e6edf3; font-family: 'Consolas', 'Fira Code', monospace; font-size: 13px; line-height: 1.6; padding: 16px; resize: none; tab-size: 4; }
+
+  .tabs { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 2px; padding: 0 12px; overflow-x: auto; }
+  .tab { padding: 10px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); white-space: nowrap; transition: all .2s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-badge { display: inline-block; background: var(--red); color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; margin-left: 4px; }
+  .tab-badge.warn { background: var(--yellow); color: #000; }
+  .tab-badge.ok   { background: var(--green); color: #000; }
+
+  .tab-content { flex: 1; overflow: auto; display: none; padding: 16px; }
+  .tab-content.active { display: block; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .card-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .card-value { font-size: 22px; font-weight: 700; }
+  .card-value.green  { color: var(--green); }
+  .card-value.red    { color: var(--red); }
+  .card-value.yellow { color: var(--yellow); }
+  .card-value.blue   { color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th    { background: var(--surface2); color: var(--muted); text-align: left; padding: 8px 10px; font-weight: 600; position: sticky; top: 0; border-bottom: 1px solid var(--border); }
+  td    { padding: 6px 10px; border-bottom: 1px solid rgba(48,54,61,.5); }
+  tr:hover td { background: rgba(88,166,255,.05); }
+  .tok-kw     { color: #ff7b72; }
+  .tok-id     { color: #79c0ff; }
+  .tok-int    { color: #a5d6ff; }
+  .tok-float  { color: #a5d6ff; }
+  .tok-str    { color: #a8ff78; }
+  .tok-char   { color: #ffa657; }
+  .tok-op     { color: #ff9898; }
+  .tok-delim  { color: #e6edf3; }
+  .tok-pp     { color: #bc8cff; }
+  .tok-typo   { background: rgba(210,153,34,.2); }
+
+  .tree-container { font-family: 'Consolas', monospace; font-size: 12px; }
+  .tree-node { cursor: pointer; }
+  .tree-node-label { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; transition: background .15s; }
+  .tree-node-label:hover { background: rgba(88,166,255,.1); }
+  .tree-node-label .node-name  { color: var(--accent); font-weight: 600; }
+  .tree-node-label .node-value { color: var(--green); }
+  .tree-node-label .collapse-icon { color: var(--muted); font-size: 10px; width: 10px; }
+  .tree-children { margin-left: 20px; border-left: 1px dashed var(--border); padding-left: 10px; }
+  .tree-leaf .node-name { color: var(--orange); }
+
+  .sym-kind-variable  { color: var(--cyan); }
+  .sym-kind-function  { color: var(--accent); }
+  .sym-kind-parameter { color: var(--orange); }
+  .sym-kind-struct    { color: var(--purple); }
+  .sym-scope-global   { color: var(--muted); font-size: 11px; }
+  .sym-used-yes { color: var(--green); }
+  .sym-used-no  { color: var(--red); }
+
+  .loading { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; flex-direction: column; gap: 14px; }
+  .loading.show { display: flex; }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--text); font-size: 14px; }
+
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; gap: 12px; color: var(--muted); }
+  .empty-icon { font-size: 40px; }
+
+  .code-block { background: #010409; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: 'Consolas', monospace; font-size: 12.5px; line-height: 1.7; overflow-x: auto; white-space: pre; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Compiling C code...</div>
+</div>
+
+
+<div class="header">
+  <div>
+    <div class="header-logo">⚙️ C Compiler Dashboard</div>
+  </div>
+  <div class="header-badge">C Language Analyser</div>
+</div>
+
+
+<div class="layout">
+
+  <div class="left-panel">
+    <div class="api-bar">
+      <label>🔑 OpenRouter API Key:</label>
+      <input type="password" id="apiKeyInput" class="api-input" placeholder="sk-or-v1-..." autocomplete="off">
+      <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="saveApiKey()">Set Key</button>
+      <span class="api-status err" id="apiStatus">Not set</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto;">AI error correction requires key</span>
+    </div>
+
+    
+    <div class="editor-header">
+      <span class="editor-title">📝 Source Editor</span>
+      <span class="lang-badge">C</span>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="loadDemo()">Demo</button>
+        <button class="btn btn-secondary" onclick="clearEditor()">Clear</button>
+        <button class="btn" id="compileBtn" onclick="compile()">▶ Compile</button>
+      </div>
+    </div>
+
+    <textarea id="editor" spellcheck="false" placeholder="// Enter your C code here...
+// Click 'Demo' to load a sample with errors.
+
+#include <stdio.h>
+
+int main() {
+    int arr[5] = {1, 2, 3, 4, 5};
+    printf(&quot;%d\n&quot;, arr[0]);
+    return 0;
+}"></textarea>
+  </div>
+
+  <!-- RIGHT: Results -->
+  <!-- Tabs for displaying different compiler outputs -->
+  <!-- Summary      → overall stats -->
+  <!-- Pipeline     → step-by-step phase flow -->
+  <!-- Tokens       → lexical output -->
+  <!-- Parse Tree   → syntax tree -->
+  <!-- Symbol Table → semantic analysis -->
+  <!-- Corrected    → AI-fixed code -->
+  <div class="right-panel">
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('summary')"   data-tab="summary">Summary</div>
+      <div class="tab"        onclick="showTab('pipeline')"  data-tab="pipeline">Pipeline</div>
+      <div class="tab"        onclick="showTab('tokens')"    data-tab="tokens">Tokens</div>
+      <div class="tab"        onclick="showTab('parsetree')" data-tab="parsetree">Parse Tree</div>
+      <div class="tab"        onclick="showTab('symtable')"  data-tab="symtable">Symbol Table</div>
+      <div class="tab"        onclick="showTab('corrected')" data-tab="corrected">Corrected</div>
+    </div>
+
+    <!-- Summary -->
+    <div class="tab-content active" id="tab-summary">
+      <div class="empty-state" id="summaryEmpty">
+        <div class="empty-icon">⚙️</div>
+        <div>Write C code and click <strong>Compile</strong> to begin</div>
+      </div>
+      <div id="summaryContent" style="display:none;"></div>
+    </div>
+
+    <!-- Pipeline -->
+    <div class="tab-content" id="tab-pipeline">
+      <div class="empty-state" id="pipelineEmpty"><div class="empty-icon">🔁</div><div>No pipeline data yet</div></div>
+      <div id="pipelineContent" style="display:none;"></div>
+    </div>
+
+    <!-- Tokens -->
+    <div class="tab-content" id="tab-tokens">
+      <div class="empty-state" id="tokensEmpty"><div class="empty-icon">🔤</div><div>No tokens yet</div></div>
+      <div id="tokensContent" style="display:none;"></div>
+    </div>
+
+    <!-- Parse Tree -->
+    <div class="tab-content" id="tab-parsetree">
+      <div class="empty-state" id="parsetreeEmpty"><div class="empty-icon">🌳</div><div>No parse tree yet</div></div>
+      <div class="tree-container" id="parsetreeContent" style="display:none;"></div>
+    </div>
+
+    <!-- Symbol Table -->
+    <div class="tab-content" id="tab-symtable">
+      <div class="empty-state" id="symtableEmpty"><div class="empty-icon">📋</div><div>No symbol table yet</div></div>
+      <div id="symtableContent" style="display:none;"></div>
+    </div>
+
+    <!-- Corrected -->
+    <div class="tab-content" id="tab-corrected">
+      <div class="empty-state" id="correctedEmpty"><div class="empty-icon">✅</div><div>No corrected code yet</div></div>
+      <div id="correctedContent" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "http://localhost:5000";
+
+const DEMO_CODE = `#include <stdio.h>
+
+// Demo C program with intentional errors for the compiler to detect:
+// 1. Typo: "pintf" should be "printf"
+// 2. OOB: arr[10] on a size-5 array
+// 3. Negative index: arr[-1] (undefined behaviour in C)
+// 4. Off-by-one in loop: arr[i+1] when i reaches 4
+// 5. Undeclared variable usage
+// 6. Missing return in function
+
+int calcualte_sum(int arr[], int n) {
+    int totl = 0;
+    for (int i = 0; i < n; i++) {
+        totl = totl + arr[i];
+    }
+    // missing return — semantic error
+}
+
+int main() {
+    int arr[5] = {10, 20, 30, 40, 50};
+    int n = 5;
+
+    // Typo: pintf instead of printf
+    pintf("Array: ");
+
+    // Out-of-bounds: index 10 on size-5 array
+    printf("%d\\n", arr[10]);
+
+    // Negative index (undefined behaviour in C)
+    printf("%d\\n", arr[-1]);
+
+    // Off-by-one risk in loop
+    for (int i = 0; i < n; i++) {
+        printf("%d ", arr[i+1]);
+    }
+
+    int result = calcualte_sum(arr, n);
+    printf("Sum = %d\\n", result);
+
+    // Undeclared variable
+    printf("%d\\n", undeclared_var);
+
+    retrun 0;
+}`;
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+  document.getElementById(`tab-${name}`).classList.add('active');
+}
+
+function loadDemo() { document.getElementById('editor').value = DEMO_CODE; }
+// Clear editor content
+function clearEditor() { document.getElementById('editor').value = ''; }
+
+document.getElementById('editor').addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = e.target.selectionStart;
+    const v = e.target.value;
+    e.target.value = v.substring(0, s) + '    ' + v.substring(e.target.selectionEnd);
+    e.target.selectionStart = e.target.selectionEnd = s + 4;
+  }
+});
+
+
+async function saveApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (!key) { alert('Please enter your OpenRouter API key.'); return; }
+  try {
+    const r = await fetch(`${API_BASE}/api/set-key`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ api_key: key })
+    });
+    const d = await r.json();
+    if (d.success) { setApiStatus(true); } else { setApiStatus(false, d.error); }
+  } catch (e) {
+    setApiStatus(false, 'Cannot reach backend — is api.py running?');
+  }
+}
+
+function setApiStatus(ok, msg) {
+  const el = document.getElementById('apiStatus');
+  el.className = 'api-status ' + (ok ? 'ok' : 'err');
+  el.textContent = ok ? '✓ Key set' : (msg || '✗ Not set');
+}
+
+async function checkKeyStatus() {
+  try {
+    const r = await fetch(`${API_BASE}/api/key-status`);
+    const d = await r.json();
+    setApiStatus(d.has_key, d.has_key ? `✓ ${d.preview}` : 'Not set');
+  } catch {}
+}
+checkKeyStatus();
+
+async function compile() {
+  const source = document.getElementById('editor').value.trim();
+  if (!source) { alert('Please enter some C code first.'); return; }
+
+  document.getElementById('compileBtn').disabled = true;
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('loadingText').textContent = 'Running lexical analysis...';
+
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/compile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, api_key: apiKey || undefined })
+    });
+    const data = await resp.json();
+    if (data.error) { alert('Compiler error: ' + data.error); return; }
+    renderAll(data);
+  } catch (e) {
+    alert('Cannot reach backend. Make sure api.py is running:\n  python api.py\n\nError: ' + e);
+  } finally {
+    document.getElementById('compileBtn').disabled = false;
+    document.getElementById('loading').classList.remove('show');
+  }
+}
+
+function renderAll(data) {
+  renderSummary(data);
+  renderPipeline(data);
+  renderTokens(data.phases.lexical);
+  renderParseTree(data.phases.syntax || data.phases.semantic);
+  renderSymbolTable(data.phases.semantic || data.phases.syntax);
+  renderCorrected(data.corrected_code);
+  updateTabBadges(data);
+  showTab('summary');
+}
+
+function renderSummary(data) {
+  const s = data.summary;
+  const phases = data.phases;
+  document.getElementById('summaryEmpty').style.display = 'none';
+  const el = document.getElementById('summaryContent');
+  el.style.display = 'block';
+
+  const allErrors = Object.values(phases).flatMap(p => p.initial_errors || p.final_errors || []);
+  const errors  = allErrors.filter(e => e.severity === 'error');
+  const warns   = allErrors.filter(e => e.severity === 'warning');
+
+  el.innerHTML = `
+    <div class="summary-grid">
+      <div class="card"><div class="card-label">Errors Found</div><div class="card-value ${errors.length ? 'red' : 'green'}">${errors.length}</div></div>
+      <div class="card"><div class="card-label">Warnings</div><div class="card-value ${warns.length ? 'yellow' : 'green'}">${warns.length}</div></div>
+      <div class="card"><div class="card-label">Fixed by AI</div><div class="card-value ${s.fixed ? 'green' : 'blue'}">${s.fixed ? '✓' : '—'}</div></div>
+      <div class="card"><div class="card-label">Tokens</div><div class="card-value blue">${(phases.lexical?.tokens || []).length}</div></div>
+      <div class="card"><div class="card-label">Symbols</div><div class="card-value blue">${(phases.semantic?.symbol_table || phases.syntax?.symbol_table || []).length}</div></div>
+      <div class="card"><div class="card-label">Lines</div><div class="card-value blue">${s.lines_original}</div></div>
+    </div>`;
+}
+
+// Displays step-by-step compiler phases:
+// 1. Lexical
+// 2. Syntax
+// 3. Semantic
+// Shows:
+// - Input code
+// - Output code
+// - Errors detected
+// - AI fixes applied
+function renderPipeline(data) {
+  document.getElementById('pipelineEmpty').style.display = 'none';
+  const el = document.getElementById('pipelineContent');
+  el.style.display = 'block';
+
+  const phases = [
+    { key: 'lexical',  label: '🔤 Phase 1 — Lexical Analysis',  desc: 'Reads raw source code character by character. Converts it into tokens. Detects invalid characters and illegal identifiers.' },
+    { key: 'syntax',   label: '🌳 Phase 2 — Syntax Analysis',   desc: 'Receives lexically-corrected code. Checks grammar rules — missing semicolons, mismatched parentheses, invalid statement structure.' },
+    { key: 'semantic', label: '📋 Phase 3 — Semantic Analysis', desc: 'Receives syntactically-corrected code. Checks meaning — type mismatches, undeclared variables, OOB array access, missing return.' },
+  ];
+
+  const stageHTML = phases.map((p, idx) => {
+    const phase = data.phases[p.key];
+    if (!phase) return '';
+
+    const initErrs  = (phase.initial_errors || []).filter(e => e.severity === 'error');
+    const initWarns = (phase.initial_errors || []).filter(e => e.severity === 'warning');
+    const fixed     = phase.fixed || (phase.iterations && phase.iterations.length > 0);
+    const statusColor = initErrs.length === 0 ? 'var(--green)' : fixed ? 'var(--yellow)' : 'var(--red)';
+    const statusIcon  = initErrs.length === 0 ? '✓ Clean' : fixed ? '⚡ Errors Fixed by AI' : '✗ Errors Remain';
+
+    const inputCode   = phase.original_code  || '';
+    const outputCode  = phase.corrected_code || '';
+    const codeChanged = inputCode !== outputCode;
+
+    const errorItems = (phase.initial_errors || []).map(e => `
+      <div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(48,54,61,.4);">
+        <span style="font-size:10px;padding:1px 6px;border-radius:3px;white-space:nowrap;
+          background:${e.severity==='error'?'rgba(248,81,73,.15)':'rgba(210,153,34,.15)'};
+          color:${e.severity==='error'?'var(--red)':'var(--yellow)'};">
+          ${e.severity === 'error' ? '✗ ERROR' : '⚠ WARN'}
+        </span>
+        <span style="color:var(--yellow);font-size:11px;white-space:nowrap;">Line ${e.line||'?'}</span>
+        <span style="font-size:11px;color:var(--text);">${esc(e.description||'')}</span>
+      </div>`).join('');
+
+    const fixItems = (phase.iterations || []).flatMap(it =>
+      (it.ai_fixes || []).map(f => `
+        <div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(48,54,61,.4);">
+          <span style="font-size:10px;padding:1px 6px;border-radius:3px;white-space:nowrap;
+            background:rgba(63,185,80,.15);color:var(--green);">🤖 AI</span>
+          <span style="color:var(--yellow);font-size:11px;white-space:nowrap;">Line ${f.line}</span>
+          <span style="font-family:monospace;font-size:11px;">
+            <span style="color:var(--red);">${esc(f.original)}</span>
+            <span style="color:var(--muted);margin:0 4px;">→</span>
+            <span style="color:var(--green);">${esc(f.fixed)}</span>
+          </span>
+        </div>`)
+    ).join('');
+
+    return `
+      <div style="position:relative;">
+        ${idx < phases.length - 1 ? `
+          <div style="position:absolute;left:23px;bottom:-32px;width:2px;height:32px;
+            background:linear-gradient(to bottom,var(--accent),transparent);z-index:1;"></div>
+          <div style="position:absolute;left:17px;bottom:-36px;font-size:14px;color:var(--accent);z-index:2;">▼</div>
+        ` : ''}
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:36px;">
+          <div style="padding:12px 16px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--surface2);border:2px solid ${statusColor};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0;color:${statusColor};">
+              ${idx + 1}
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:var(--text);">${p.label}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">${p.desc}</div>
+            </div>
+            <div style="font-size:11px;font-weight:700;color:${statusColor};white-space:nowrap;">${statusIcon}</div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+            <div style="padding:12px 14px;border-right:1px solid var(--border);">
+              <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">
+                📥 Input ${idx === 0 ? '(original source)' : '(from previous phase)'}
+              </div>
+              <pre style="font-size:10px;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto;margin:0;line-height:1.5;">${esc(inputCode)}</pre>
+            </div>
+            <div style="padding:12px 14px;">
+              <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">
+                📤 Output ${codeChanged ? '<span style="color:var(--green);">(fixed by AI ✓)</span>' : '<span style="color:var(--muted);">(unchanged)</span>'}
+              </div>
+              <pre style="font-size:10px;color:var(--text);white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto;margin:0;line-height:1.5;">${esc(outputCode)}</pre>
+            </div>
+          </div>
+
+          ${initErrs.length + initWarns.length > 0 ? `
+            <div style="padding:10px 14px;border-top:1px solid var(--border);background:rgba(248,81,73,.04);">
+              <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">
+                🔍 Errors Detected (${initErrs.length} error${initErrs.length!==1?'s':''}, ${initWarns.length} warning${initWarns.length!==1?'s':''})
+              </div>
+              ${errorItems}
+            </div>` : `
+            <div style="padding:10px 14px;border-top:1px solid var(--border);">
+              <span style="font-size:11px;color:var(--green);">✓ No errors detected in this phase.</span>
+            </div>`}
+
+          ${fixItems ? `
+            <div style="padding:10px 14px;border-top:1px solid var(--border);background:rgba(63,185,80,.04);">
+              <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">
+                🤖 AI Fixes Applied
+              </div>
+              ${fixItems}
+            </div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="padding:4px 0 20px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:20px;padding:10px 14px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">
+        💡 Each phase receives the <strong>corrected output</strong> of the previous phase.
+        The original source code is never modified — a corrected copy flows through the pipeline.
+      </div>
+      ${stageHTML}
+    </div>`;
+}
+
+// Displays tokens generated by lexical analysis
+function renderTokens(phase) {
+  if (!phase || !phase.tokens || phase.tokens.length === 0) return;
+  document.getElementById('tokensEmpty').style.display = 'none';
+  const el = document.getElementById('tokensContent');
+  el.style.display = 'block';
+
+  const rows = phase.tokens.map(t => {
+    const cls = tokenClass(t.type);
+    const typo = t.typo_hint ? `<span style="color:var(--yellow);font-size:10px;margin-left:4px;">→ ${esc(t.typo_hint)}?</span>` : '';
+    return `<tr class="${t.typo_hint ? 'tok-typo' : ''}">
+      <td class="${cls}">${esc(t.value)}</td>
+      <td style="color:var(--muted)">${t.type}${typo}</td>
+      <td style="color:var(--muted)">${t.line}</td>
+      <td style="color:var(--muted)">${t.col}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:10px;font-size:12px;color:var(--muted);">${phase.tokens.length} tokens found</div>
+    <table>
+      <thead><tr><th>Value</th><th>Type</th><th>Line</th><th>Col</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function tokenClass(type) {
+  return { KEYWORD:'tok-kw', IDENTIFIER:'tok-id', INTEGER:'tok-int', FLOAT:'tok-float',
+    STRING:'tok-str', CHAR_LIT:'tok-char', OPERATOR:'tok-op', DELIMITER:'tok-delim', PREPROCESSOR:'tok-pp' }[type] || '';
+}
+
+// Displays syntax tree (CST) in expandable format
+function renderParseTree(phase) {
+  if (!phase || !phase.parse_tree) return;
+  document.getElementById('parsetreeEmpty').style.display = 'none';
+  const el = document.getElementById('parsetreeContent');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="margin-bottom:12px;display:flex;gap:10px;align-items:center;">
+      <span style="font-size:13px;font-weight:600;">Concrete Syntax Tree (CST)</span>
+      <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="expandAll()">Expand All</button>
+      <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="collapseAll()">Collapse All</button>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto;">Click nodes to expand/collapse</span>
+    </div>
+    <div id="treeRoot">${buildTreeHTML(phase.parse_tree, 0)}</div>`;
+}
+
+// Recursively builds HTML structure for parse tree nodes
+function buildTreeHTML(node, depth) {
+  if (!node) return '';
+  const children = node.children || [];
+  const isLeaf   = children.length === 0;
+  const hasValue = node.value !== undefined && node.value !== null;
+  const labelContent = hasValue
+    ? `<span class="node-name">${esc(node.label)}</span><span style="color:var(--muted);margin:0 4px">=</span><span class="node-value">${esc(String(node.value))}</span>`
+    : `<span class="node-name">${esc(node.label)}</span>`;
+  if (isLeaf) {
+    return `<div class="tree-node tree-leaf" style="margin:2px 0;">
+      <div class="tree-node-label"><span class="collapse-icon">◆</span>${labelContent}</div>
+    </div>`;
+  }
+  const id = 'tn_' + Math.random().toString(36).slice(2,8);
+  const childrenHTML = children.map(c => buildTreeHTML(c, depth+1)).join('');
+  return `<div class="tree-node" style="margin:2px 0;">
+    <div class="tree-node-label" onclick="toggleTree('${id}')">
+      <span class="collapse-icon" id="ico_${id}">▾</span>${labelContent}
+    </div>
+    <div class="tree-children" id="${id}">${childrenHTML}</div>
+  </div>`;
+}
+
+function toggleTree(id) {
+  const el = document.getElementById(id);
+  const ico = document.getElementById('ico_' + id);
+  if (!el) return;
+  const collapsed = el.style.display === 'none';
+  el.style.display = collapsed ? 'block' : 'none';
+  if (ico) ico.textContent = collapsed ? '▾' : '▸';
+}
+function expandAll() {
+  document.querySelectorAll('.tree-children').forEach(el => el.style.display = 'block');
+  document.querySelectorAll('.collapse-icon').forEach(el => { if(el.textContent==='▸') el.textContent='▾'; });
+}
+function collapseAll() {
+  document.querySelectorAll('.tree-children').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.collapse-icon').forEach(el => { if(el.textContent==='▾') el.textContent='▸'; });
+}
+
+// Displays variables, functions, types, scope, usage
+function renderSymbolTable(phase) {
+  if (!phase || !phase.symbol_table || phase.symbol_table.length === 0) return;
+  document.getElementById('symtableEmpty').style.display = 'none';
+  const el = document.getElementById('symtableContent');
+  el.style.display = 'block';
+
+  const syms = phase.symbol_table;
+  const rows = syms.map(s => {
+    const kindCls = `sym-kind-${s.kind}`;
+    const usedCls = s.used ? 'sym-used-yes' : 'sym-used-no';
+    const params = s.params && s.params.length ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">Params: ${esc(s.params.join(', '))}</div>` : '';
+    const size   = s.size != null ? `<div style="font-size:10px;color:var(--muted);">[${s.size}]</div>` : '';
+    return `<tr>
+      <td style="font-weight:600">${esc(s.name)}</td>
+      <td class="${kindCls}">${s.kind}</td>
+      <td style="font-family:monospace;color:var(--orange)">${esc(s.type)}${size}</td>
+      <td class="sym-scope-global">${esc(s.scope || 'global')}</td>
+      <td>${s.line || '—'}</td>
+      <td class="${usedCls}">${s.used ? '✓' : '✗'}</td>
+      <td>${params}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:10px;font-size:12px;color:var(--muted);">${syms.length} symbol(s) found</div>
+    <table>
+      <thead><tr><th>Name</th><th>Kind</th><th>Type</th><th>Scope</th><th>Line</th><th>Used</th><th>Details</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// Displays AI-corrected final C code
+function renderCorrected(code) {
+  if (!code) return;
+  document.getElementById('correctedEmpty').style.display = 'none';
+  const el = document.getElementById('correctedContent');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="font-size:12px;color:var(--muted);">Corrected C source code (AI-fixed)</span>
+      <button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="copyCode()">Copy</button>
+    </div>
+    <div class="code-block" id="correctedCodeBlock">${esc(code)}</div>`;
+}
+
+// Copies corrected code to clipboard
+function copyCode() {
+  const code = document.getElementById('correctedCodeBlock').textContent;
+  navigator.clipboard.writeText(code).then(() => alert('Copied to clipboard!'));
+}
+
+// Updates tab badges with counts:
+// - Errors
+// - Tokens
+// - Symbols
+function updateTabBadges(data) {
+  const phases = data.phases;
+  const allErrors = Object.values(phases).flatMap(p => p.initial_errors || p.final_errors || []);
+  const errCount  = allErrors.filter(e => e.severity === 'error').length;
+  const warnCount = allErrors.filter(e => e.severity === 'warning').length;
+
+  const sumTab = document.querySelector('[data-tab="summary"]');
+  sumTab.innerHTML = 'Summary';
+  if (errCount)       sumTab.innerHTML += `<span class="tab-badge">${errCount}</span>`;
+  else if (warnCount) sumTab.innerHTML += `<span class="tab-badge warn">${warnCount}</span>`;
+  else                sumTab.innerHTML += `<span class="tab-badge ok">✓</span>`;
+
+  const tokCount = (phases.lexical?.tokens || []).length;
+  document.querySelector('[data-tab="tokens"]').innerHTML =
+    `Tokens <span class="tab-badge ok">${tokCount}</span>`;
+
+  const symCount = (phases.semantic?.symbol_table || phases.syntax?.symbol_table || []).length;
+  document.querySelector('[data-tab="symtable"]').innerHTML =
+    `Symbol Table <span class="tab-badge ok">${symCount}</span>`;
+}
+
+// Prevents HTML injection by escaping special characters
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
