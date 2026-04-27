@@ -21,7 +21,6 @@ The compiler also includes a **visual HTML dashboard** for interactive code subm
 - ✅ **Phase-Isolated Fixes** — each phase fixer is strictly constrained to its own error class (no cross-phase interference)
 - ✅ **Focused Snippet Optimisation** — only error-surrounding lines (±1 context) are sent to the AI, reducing token usage
 - ✅ **Visual HTML Dashboard** — browser-based UI to submit code, view errors, and see corrected output
-- ✅ **Optional Code Generation** — generates intermediate/target code if all phases pass
 
 ---
 
@@ -110,7 +109,7 @@ cd compiler-project
 
 # 2. Install dependencies
 
-# 3. (Optional) Set your OpenRouter API key
+# 3. Set your OpenRouter API key
 #    Enter it in the dashboard UI, or set it programmatically:
 #    from ai_correction import set_api_key
 #    set_api_key("your-key-here")
@@ -126,7 +125,7 @@ cd compiler-project
 python main.py
 ```
 
-You will be prompted to enter or provide a C source file. The compiler will run all phases sequentially and print errors and corrections to the console.
+You can enter the c code by clicking on the demo button which will load the demo code. The compiler will run all phases sequentially and print errors and corrections to the console.
 
 ### Run via Dashboard
 
